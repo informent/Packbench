@@ -9,7 +9,7 @@ labels: bug
 
 ## Steps to reproduce
 
-## OpenPackager version
+## Packbench version
 
 ## Relevant diagnostic log
 

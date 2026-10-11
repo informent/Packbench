@@ -2,11 +2,11 @@ using System.IO.Compression;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Diagnostics;
-using OpenPackager;
+using Packbench;
 
 var root = Path.Combine(Path.GetTempPath(), "openpackager-engine-test-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(Path.Combine(root, "app"));
-await File.WriteAllTextAsync(Path.Combine(root, "app", "hello.txt"), "OpenPackager engine test");
+await File.WriteAllTextAsync(Path.Combine(root, "app", "hello.txt"), "Packbench engine test");
 await File.WriteAllTextAsync(Path.Combine(root, "app", "résumé with spaces.txt"), "Unicode content");
 var large = Path.Combine(root, "app", "large.bin");
 using (var stream = File.Create(large)) stream.SetLength(32 * 1024 * 1024);

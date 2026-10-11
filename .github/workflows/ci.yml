@@ -1,4 +1,4 @@
-name: OpenPackager CI
+name: Packbench CI
 
 on:
   push:
@@ -20,21 +20,21 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Build application
-        run: dotnet build OpenPackager.csproj -c Release
+        run: dotnet build Packbench.csproj -c Release
       - name: Run engine regression tests
-        run: dotnet run --project tests/OpenPackager.EngineTests.csproj -c Release
+        run: dotnet run --project tests/Packbench.EngineTests.csproj -c Release
       - name: Publish self-contained build
-        run: dotnet publish OpenPackager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o ci-output
+        run: dotnet publish Packbench.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o ci-output
       - name: Verify published executable
         shell: pwsh
         run: |
-          if (-not (Test-Path ci-output/OpenPackager.exe)) { throw 'Published executable missing.' }
-          Get-FileHash ci-output/OpenPackager.exe -Algorithm SHA256
+          if (-not (Test-Path ci-output/Packbench.exe)) { throw 'Published executable missing.' }
+          Get-FileHash ci-output/Packbench.exe -Algorithm SHA256
       - name: Verify packaged application workflow
         shell: powershell
-        run: ./tests/PackageUi.ps1 -Exe "${{ github.workspace }}/ci-output/OpenPackager.exe"
+        run: ./tests/PackageUi.ps1 -Exe "${{ github.workspace }}/ci-output/Packbench.exe"
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: OpenPackager-win-x64
+          name: Packbench-win-x64
           path: ci-output/

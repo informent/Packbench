@@ -6,10 +6,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>3.2.0</Version>
+    <Version>3.2.1</Version>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <InvariantGlobalization>false</InvariantGlobalization>
-  </PropertyGroup>
+  <Product>Packbench</Product><Title>Packbench</Title><Company>informent</Company></PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests\**" />
   </ItemGroup>
