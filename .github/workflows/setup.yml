@@ -1,0 +1,20 @@
+name: Automatic setup
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with: { dotnet-version: 10.0.x }
+      - name: Build and verify setup installer
+        shell: pwsh
+        run: ./scripts/Build-Setup.ps1 -Verify
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Packbench-setup
+          path: installer-output/*
+          if-no-files-found: error
