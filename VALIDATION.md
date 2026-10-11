@@ -1,4 +1,4 @@
-# OpenPackager 3.0.0 validation
+# Packbench 3.0.0 validation
 
 ## Automated checks
 

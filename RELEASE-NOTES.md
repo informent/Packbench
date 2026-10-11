@@ -1,4 +1,4 @@
-# OpenPackager 3.1.0
+# Packbench 3.1.0
 
 - Reject malformed JSON release manifests.
 - Require unique checksum paths and strict SHA-256 formatting.
@@ -6,7 +6,7 @@
 
 ## 3.0.0
 
-- Verify existing OpenPackager ZIPs directly from the desktop app.
+- Verify existing Packbench ZIPs directly from the desktop app.
 - Validate manifests, complete SHA-256 coverage, every payload digest, duplicate archive paths, and traversal attempts.
 - Reject corrupted packages with actionable per-file results.
 

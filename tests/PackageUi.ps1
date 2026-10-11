@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$fixture = Join-Path ([IO.Path]::GetTempPath()) ('OpenPackager-ui-' + [guid]::NewGuid().ToString('N'))
+$fixture = Join-Path ([IO.Path]::GetTempPath()) ('Packbench-ui-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $fixture
 [IO.File]::WriteAllText((Join-Path $fixture 'package.json'), '{"name":"packaging-test","version":"1.0.0"}')
 [IO.File]::WriteAllText((Join-Path $fixture 'hello.txt'), 'Packaged through the actual desktop application.')
@@ -73,7 +73,7 @@ try {
     if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
     # Only the uniquely created fixture is removed; output is kept as test evidence.
     $resolved = [IO.Path]::GetFullPath($fixture)
-    if ([IO.Path]::GetDirectoryName($resolved) -eq [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') -and [IO.Path]::GetFileName($resolved).StartsWith('OpenPackager-ui-')) {
+    if ([IO.Path]::GetDirectoryName($resolved) -eq [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') -and [IO.Path]::GetFileName($resolved).StartsWith('Packbench-ui-')) {
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }

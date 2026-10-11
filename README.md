@@ -1,6 +1,6 @@
-# OpenPackager
+# Packbench
 
-OpenPackager is a privacy-first, open-source Windows release builder for developers who want a professional packaging workflow without a subscription.
+Packbench is a privacy-first, open-source Windows release builder for developers who want a professional packaging workflow without a subscription.
 
 ## Current workflow
 
@@ -16,7 +16,7 @@ OpenPackager is a privacy-first, open-source Windows release builder for develop
 
 ## Usage
 
-Start `OpenPackager.exe`, choose your project folder, select the runtime and packaging options, then select **Build release**. Completed packages are placed in numbered folders under `Downloads\GITHUB`, with a ZIP beside the folder.
+Start `Packbench.exe`, choose your project folder, select the runtime and packaging options, then select **Build release**. Completed packages are placed in numbered folders under `Downloads\GITHUB`, with a ZIP beside the folder.
 
 .NET projects are published using your installed .NET SDK. Python and Node projects produce source bundles; building standalone Python or Node executables is a separate workflow using the scripts under `tools`. Review source bundles before distributing them because project files can contain private configuration.
 
@@ -31,9 +31,9 @@ Version 3.2.0 rejects linked source roots and linked descendants before creating
 ## Verification
 
 ```powershell
-dotnet run --project tests/OpenPackager.EngineTests.csproj -c Release
-dotnet publish OpenPackager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o test-output
-powershell -NoProfile -File tests/PackageUi.ps1 -Exe "$PWD/test-output/OpenPackager.exe"
+dotnet run --project tests/Packbench.EngineTests.csproj -c Release
+dotnet publish Packbench.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o test-output
+powershell -NoProfile -File tests/PackageUi.ps1 -Exe "$PWD/test-output/Packbench.exe"
 ```
 
 The packaged-app test needs an interactive Windows desktop. It creates a fixture project, builds a source ZIP through the actual window, verifies archived hashes, and checks invalid-folder and compiler-error recovery. GitHub Actions runs the engine and packaged-app tests on Windows. See [VALIDATION.md](VALIDATION.md) for the verification scope.
@@ -43,3 +43,7 @@ Portable packages include installer scripts under `installer`. Code signing is s
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Name change
+
+Packbench replaces OpenPackager. New builds use Packbench.exe and Packbench.csproj. Existing releases remain available under their original names.

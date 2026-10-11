@@ -1,5 +1,5 @@
 {
-  "app.title": "OpenPackager",
+  "app.title": "Packbench",
   "app.subtitle": "Empaquetage d'applications Windows",
   "action.scan": "Analyser le projet",
   "action.build": "Créer la version",
