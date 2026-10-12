@@ -19,7 +19,7 @@ public static class CommandLine
             File.Move(temporary, output);
             return result.Valid ? 0 : 3;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OperationCanceledException or System.Security.SecurityException) { return 1; }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or OperationCanceledException or System.Security.SecurityException) { return 1; }
         finally { if (temporary is not null && File.Exists(temporary)) File.Delete(temporary); }
     }
 }

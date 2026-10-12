@@ -138,6 +138,8 @@ try
     var preserved = File.ReadAllText(report);
     if (CommandLine.Run(new[] { "--verify", linkPath, "--output", report }) != 2 || File.ReadAllText(report) != preserved) throw new Exception("CLI report was overwritten.");
     if (CommandLine.Run(new[] { "--bad" }) != 2) throw new Exception("Invalid CLI arguments accepted.");
+    var broken = Path.Combine(guardRoot, "broken.zip"); File.WriteAllText(broken, "not a ZIP");
+    if (CommandLine.Run(new[] { "--verify", broken, "--output", Path.Combine(guardRoot, "broken.json") }) != 1 || File.Exists(Path.Combine(guardRoot, "broken.json"))) throw new Exception("Malformed archive command did not fail cleanly.");
     var payload = Path.Combine(guardRoot, "payload"); Directory.CreateDirectory(payload); File.WriteAllText(Path.Combine(payload, "ok.txt"), "okay");
     var validZip = await PackagingEngine.CompleteReleaseAsync(payload, new { schema = 1 });
     var validReport = Path.Combine(guardRoot, "valid.json");

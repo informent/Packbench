@@ -32,6 +32,10 @@ try {
     Invoke-Headless $arguments 0
     $json = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
     if (!$json.Valid -or $json.VerifiedFiles -ne 2) { throw 'Package verification evidence is incorrect' }
+    $broken = Join-Path $root 'broken.zip'
+    [IO.File]::WriteAllText($broken, 'not a ZIP')
+    Invoke-Headless ('--verify "' + $broken + '" --output "' + (Join-Path $root 'broken.json') + '"') 1
+    if (Test-Path -LiteralPath (Join-Path $root 'broken.json')) { throw 'Malformed archive produced a success report' }
     $before = (Get-FileHash -LiteralPath $report -Algorithm SHA256).Hash
     Invoke-Headless $arguments 2
     if ((Get-FileHash -LiteralPath $report -Algorithm SHA256).Hash -ne $before) { throw 'Existing report changed' }
