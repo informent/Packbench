@@ -48,16 +48,29 @@ MIT. See [LICENSE](LICENSE).
 
 Packbench replaces OpenPackager. New builds use Packbench.exe and Packbench.csproj. Existing releases remain available under their original names.
 
+## Unattended package verification
+
+Version 3.4.0 verifies release ZIPs in scripts without opening a window:
+
+```powershell
+$p = Start-Process .\Packbench.exe -WindowStyle Hidden -ArgumentList '--verify "C:\Releases\app.zip" --output "C:\Reports\verification.json"' -Wait -PassThru
+$p.ExitCode
+```
+
+Use an existing report directory and a new JSON filename. Exit 0 means the package passed, 3 means it failed verification and the JSON contains findings, 2 means invalid arguments or an existing output, and 1 means an unreadable archive or operation failure. The command has a two-minute cancellation budget and never extracts package contents.
+
+Verification rejects Windows device names, alternate data streams, ambiguous path segments, duplicate paths, file/directory collisions and archive links. Default limits are 100,000 entries, 2 GiB per entry, 8 GiB total uncompressed data, 4 MiB manifest JSON and 16 MiB checksum metadata. Streaming hash reads enforce the byte budget. Checksums establish internal consistency, not the identity or trustworthiness of a publisher.
+
 ## Automatic setup
 
 Windows setup packages install Packbench for your current account, bundle the .NET runtime, create a Start menu shortcut and register an uninstaller. A desktop shortcut is optional. No administrator password or manual file copying is required. Existing settings and saved data stay in their current locations. The portable ZIP remains available.
 
-Download `Packbench-v3.3.1-setup.exe` from Releases and run it.
+Download `Packbench-v3.4.0-setup.exe` from Releases and run it.
 
 For unattended deployment:
 
 ```powershell
-Start-Process .\Packbench-v3.3.1-setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Wait -PassThru
+Start-Process .\Packbench-v3.4.0-setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Wait -PassThru
 ```
 
 Build from source with the [open-source Inno Setup compiler](https://github.com/jrsoftware/issrc) installed:

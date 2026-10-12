@@ -11,3 +11,5 @@ test-output-*/
 
 installer-payload/
 installer-output/
+
+test-headless-output/

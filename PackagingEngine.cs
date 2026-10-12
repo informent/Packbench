@@ -9,49 +9,100 @@ public static class PackagingEngine
 {
     public sealed record VerificationResult(bool Valid, int VerifiedFiles, IReadOnlyList<string> Errors);
 
-    public static async Task<VerificationResult> VerifyZipAsync(string zipPath)
+    public sealed record VerificationLimits(int MaxEntries = 100_000, long MaxTotalBytes = 8L * 1024 * 1024 * 1024, long MaxEntryBytes = 2L * 1024 * 1024 * 1024, int MaxManifestBytes = 4 * 1024 * 1024, int MaxChecksumBytes = 16 * 1024 * 1024);
+
+    public static async Task<VerificationResult> VerifyZipAsync(string zipPath, CancellationToken cancellationToken = default, VerificationLimits? limits = null)
     {
+        limits ??= new();
+        if (limits.MaxEntries < 1 || limits.MaxTotalBytes < 1 || limits.MaxEntryBytes < 1 || limits.MaxManifestBytes < 1 || limits.MaxChecksumBytes < 1) throw new ArgumentOutOfRangeException(nameof(limits));
+        cancellationToken.ThrowIfCancellationRequested();
         var errors = new List<string>(); var verified = 0;
         using var archive = ZipFile.OpenRead(zipPath);
-        var entries = archive.Entries.Where(x => !string.IsNullOrEmpty(x.Name)).ToArray();
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in entries)
+        if (archive.Entries.Count > limits.MaxEntries) return new(false, 0, new[] { "Archive entry budget exceeded." });
+        var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase); long declared = 0;
+        foreach (var entry in archive.Entries)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var name = entry.FullName.Replace('\\', '/');
-            if (Path.IsPathRooted(name) || name.Split('/').Any(x => x == "..")) errors.Add($"Unsafe archive path: {name}");
-            if (!names.Add(name)) errors.Add($"Duplicate archive path: {name}");
+            var directory = name.EndsWith('/'); var candidate = directory ? name[..^1] : name;
+            if (!SafeArchivePath(candidate)) return new(false, 0, new[] { "Unsafe archive path." });
+            if (((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000 || (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0) return new(false, 0, new[] { "Linked archive entry is not allowed." });
+            if (entry.Length > limits.MaxEntryBytes || entry.Length > limits.MaxTotalBytes - declared) return new(false, 0, new[] { "Archive decompression budget exceeded." });
+            declared += entry.Length;
+            if (!entries.TryAdd(candidate, entry)) return new(false, 0, new[] { "Duplicate archive path." });
         }
-        var manifest = entries.FirstOrDefault(x => x.FullName.Replace('\\', '/') == "openpackager-manifest.json");
-        var sums = entries.FirstOrDefault(x => x.FullName.Replace('\\', '/') == "SHA256SUMS.txt");
-        if (manifest is null) errors.Add("Manifest is missing.");
+        foreach (var name in entries.Keys)
+        {
+            var slash = name.IndexOf('/');
+            while (slash >= 0)
+            {
+                if (entries.TryGetValue(name[..slash], out var ancestor) && !ancestor.FullName.EndsWith('/')) return new(false, 0, new[] { "Archive file conflicts with a directory path." });
+                slash = name.IndexOf('/', slash + 1);
+            }
+        }
+        var files = entries.Where(e => !e.Value.FullName.EndsWith('/')).ToDictionary(e => e.Key, e => e.Value, StringComparer.OrdinalIgnoreCase);
+        if (!files.TryGetValue("openpackager-manifest.json", out var manifest)) errors.Add("Manifest is missing.");
         else
         {
-            try { using var manifestContent = manifest.Open(); using var document = await JsonDocument.ParseAsync(manifestContent); if (document.RootElement.ValueKind != JsonValueKind.Object) errors.Add("Manifest root must be a JSON object."); }
-            catch (JsonException ex) { errors.Add($"Manifest JSON is invalid: {ex.Message}"); }
+            if (manifest.Length > limits.MaxManifestBytes) return new(false, 0, new[] { "Manifest size budget exceeded." });
+            try { using var document = JsonDocument.Parse(await ReadBounded(manifest, limits.MaxManifestBytes, cancellationToken)); if (document.RootElement.ValueKind != JsonValueKind.Object) errors.Add("Manifest root must be a JSON object."); }
+            catch (JsonException) { errors.Add("Manifest JSON is invalid."); }
         }
-        if (sums is null) errors.Add("SHA256SUMS.txt is missing.");
-        if (sums is not null)
+        if (!files.TryGetValue("SHA256SUMS.txt", out var sums)) errors.Add("SHA256SUMS.txt is missing.");
+        else
         {
-            using var reader = new StreamReader(sums.Open());
-            var lines = (await reader.ReadToEndAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            var checksummedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (sums.Length > limits.MaxChecksumBytes) return new(false, 0, new[] { "Checksum metadata size budget exceeded." });
+            var lines = System.Text.Encoding.UTF8.GetString(await ReadBounded(sums, limits.MaxChecksumBytes, cancellationToken)).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var checksummedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase); long actualTotal = 0;
             foreach (var raw in lines)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (errors.Count >= 100) { errors.Add("Additional errors omitted."); break; }
                 var line = raw.TrimEnd('\r');
                 if (line.Length < 67 || line[64..66] != "  ") { errors.Add("Malformed checksum line."); continue; }
                 var expected = line[..64]; var name = line[66..].Replace('\\', '/');
-                if (expected.Length != 64 || !expected.All(Uri.IsHexDigit)) { errors.Add($"Invalid SHA-256 value: {name}"); continue; }
-                if (!checksummedNames.Add(name)) { errors.Add($"Duplicate checksum path: {name}"); continue; }
-                var entry = entries.FirstOrDefault(x => x.FullName.Replace('\\', '/').Equals(name, StringComparison.OrdinalIgnoreCase));
-                if (entry is null) { errors.Add($"Checksummed file is missing: {name}"); continue; }
-                using var content = entry.Open();
-                var actual = Convert.ToHexString(await SHA256.HashDataAsync(content)).ToLowerInvariant();
-                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase)) errors.Add($"Checksum mismatch: {name}"); else verified++;
+                if (!SafeArchivePath(name)) { errors.Add("Unsafe checksum path."); continue; }
+                if (!expected.All(Uri.IsHexDigit)) { errors.Add("Invalid SHA-256 value."); continue; }
+                if (!checksummedNames.Add(name)) { errors.Add("Duplicate checksum path."); continue; }
+                if (!files.TryGetValue(name, out var entry)) { errors.Add("Checksummed file is missing."); continue; }
+                using var content = entry.Open(); using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                var buffer = new byte[64 * 1024]; long entryBytes = 0; int read;
+                while ((read = await content.ReadAsync(buffer, cancellationToken)) > 0)
+                {
+                    entryBytes += read; actualTotal += read;
+                    if (entryBytes > limits.MaxEntryBytes || actualTotal > limits.MaxTotalBytes) return new(false, verified, new[] { "Archive decompression budget exceeded." });
+                    hash.AppendData(buffer, 0, read);
+                }
+                var actual = Convert.ToHexString(hash.GetHashAndReset());
+                if (entryBytes != entry.Length || !actual.Equals(expected, StringComparison.OrdinalIgnoreCase)) errors.Add($"Checksum mismatch: {name}"); else verified++;
             }
-            var expectedCoverage = entries.Where(x => !x.FullName.Replace('\\', '/').Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase)).Select(x => x.FullName.Replace('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var expectedCoverage = files.Keys.Where(x => !x.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (!checksummedNames.SetEquals(expectedCoverage)) errors.Add("Checksum coverage is incomplete.");
         }
         return new(errors.Count == 0, verified, errors);
+    }
+
+    private static bool SafeArchivePath(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || Path.IsPathRooted(name) || name.Length > 4096) return false;
+        foreach (var segment in name.Split('/'))
+        {
+            if (segment.Length == 0 || segment is "." or ".." || segment.EndsWith(' ') || segment.EndsWith('.') || segment.Any(c => c < 32 || c is ':' or '<' or '>' or '"' or '|' or '?' or '*')) return false;
+            var stem = segment.Split('.')[0];
+            if (new[] { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" }.Contains(stem, StringComparer.OrdinalIgnoreCase) || stem.Length == 4 && (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) && (stem[3] is >= '1' and <= '9' or '\u00b9' or '\u00b2' or '\u00b3')) return false;
+        }
+        return true;
+    }
+
+    private static async Task<byte[]> ReadBounded(ZipArchiveEntry entry, int maximum, CancellationToken cancellationToken)
+    {
+        using var source = entry.Open(); using var output = new MemoryStream(); var buffer = new byte[8192]; int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            if (output.Length + read > maximum) throw new InvalidDataException("Archive metadata budget exceeded.");
+            output.Write(buffer, 0, read);
+        }
+        return output.ToArray();
     }
 
     public static async Task<string> WriteChecksumsAsync(string releaseFolder)

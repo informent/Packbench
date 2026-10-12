@@ -1,3 +1,13 @@
+# Packbench 3.4.0
+
+Packbench can now verify release archives in unattended scripts and write a structured result. Verification rejects unsafe Windows paths, links, file/directory collisions and duplicate entries, and enforces metadata and streamed decompression budgets. Existing reports are preserved.
+
+## Verification
+
+Engine regressions cover unsafe paths, archive links, entry and byte budgets, metadata limits, collisions, cancellation and both valid and rejected command results. The self-contained EXE passed unattended verification locally.
+
+Automatic setup and portable builds include the .NET runtime. Installers are unsigned. ZIP checksums verify downloaded bytes; they do not authenticate an unknown publisher.
+
 # Packbench 3.1.0
 
 - Reject malformed JSON release manifests.

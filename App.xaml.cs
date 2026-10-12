@@ -5,6 +5,13 @@ using System.IO;
 namespace Packbench;
 public partial class App : System.Windows.Application
 {
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        if (e.Args.Length > 0) { Shutdown(CommandLine.Run(e.Args)); return; }
+        new MainWindow().Show();
+    }
+
     public App()
     {
         RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;

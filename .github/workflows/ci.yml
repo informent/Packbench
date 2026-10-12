@@ -33,6 +33,10 @@ jobs:
       - name: Verify packaged application workflow
         shell: powershell
         run: ./tests/PackageUi.ps1 -Exe "${{ github.workspace }}/ci-output/Packbench.exe"
+      - name: Verify unattended workflow
+        shell: pwsh
+        run: |
+          ./tests/Test-Headless.ps1 -Exe (Join-Path $PWD 'ci-output/Packbench.exe')
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
