@@ -101,3 +101,49 @@ finally
 }
 Directory.Delete(root, true);
 Console.WriteLine("PASS: archive creation, strict manifest and checksum coverage verification, corruption rejection, Unicode, large file, repeated checksums, existing ZIP protection, failure cleanup, and source-junction rejection");
+
+var guardRoot = Path.Combine(Path.GetTempPath(), "packbench-guards-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(guardRoot);
+try
+{
+    foreach (var unsafeName in new[] { "../escape", "C:/escape", "file:stream", "CON.txt", "folder/trailing.", "folder//file", "folder/./file", "folder/trailing ", "COM1.bin" })
+    {
+        var path = Path.Combine(guardRoot, "unsafe.zip");
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Create)) { using var writer = new StreamWriter(archive.CreateEntry(unsafeName).Open()); writer.Write("payload"); }
+        var rejected = await PackagingEngine.VerifyZipAsync(path);
+        if (rejected.Valid || !rejected.Errors.Any(e => e.Contains("Unsafe archive path"))) throw new Exception("Unsafe archive accepted: " + unsafeName);
+        File.Delete(path);
+    }
+    var linkPath = Path.Combine(guardRoot, "linked.zip");
+    using (var archive = ZipFile.Open(linkPath, ZipArchiveMode.Create)) { var entry = archive.CreateEntry("link"); entry.ExternalAttributes = unchecked((int)0xA1FF0000); using var writer = new StreamWriter(entry.Open()); writer.Write("target"); }
+    if (!(await PackagingEngine.VerifyZipAsync(linkPath)).Errors.Any(e => e.Contains("Linked archive"))) throw new Exception("Archive link accepted.");
+    var budgetPath = Path.Combine(guardRoot, "budget.zip");
+    using (var archive = ZipFile.Open(budgetPath, ZipArchiveMode.Create)) { using var writer = new StreamWriter(archive.CreateEntry("large.txt").Open()); writer.Write(new string('x', 1000)); }
+    if (!(await PackagingEngine.VerifyZipAsync(budgetPath, limits: new(MaxEntryBytes: 100))).Errors.Any(e => e.Contains("budget"))) throw new Exception("Decompression budget ignored.");
+    var conflictPath = Path.Combine(guardRoot, "conflict.zip");
+    using (var archive = ZipFile.Open(conflictPath, ZipArchiveMode.Create)) { archive.CreateEntry("file"); archive.CreateEntry("file/child.txt"); }
+    if (!(await PackagingEngine.VerifyZipAsync(conflictPath)).Errors.Any(e => e.Contains("conflicts"))) throw new Exception("File/directory collision accepted.");
+    if (!(await PackagingEngine.VerifyZipAsync(conflictPath, limits: new(MaxEntries: 1))).Errors.Any(e => e.Contains("entry budget"))) throw new Exception("Entry budget ignored.");
+    var duplicatePath = Path.Combine(guardRoot, "duplicate.zip");
+    using (var archive = ZipFile.Open(duplicatePath, ZipArchiveMode.Create)) { archive.CreateEntry("File.txt"); archive.CreateEntry("file.txt"); }
+    if (!(await PackagingEngine.VerifyZipAsync(duplicatePath)).Errors.Any(e => e.Contains("Duplicate archive"))) throw new Exception("Windows case collision accepted.");
+    var metadataPath = Path.Combine(guardRoot, "metadata.zip");
+    using (var archive = ZipFile.Open(metadataPath, ZipArchiveMode.Create)) { using var writer = new StreamWriter(archive.CreateEntry("openpackager-manifest.json").Open()); writer.Write("{ \"value\": \"oversized\" }"); }
+    if (!(await PackagingEngine.VerifyZipAsync(metadataPath, limits: new(MaxManifestBytes: 2))).Errors.Any(e => e.Contains("Manifest size budget"))) throw new Exception("Manifest budget ignored.");
+    if (!(await PackagingEngine.VerifyZipAsync(budgetPath, limits: new(MaxTotalBytes: 100))).Errors.Any(e => e.Contains("decompression budget"))) throw new Exception("Total decompression budget ignored.");
+    using var canceled = new CancellationTokenSource(); canceled.Cancel();
+    try { await PackagingEngine.VerifyZipAsync(budgetPath, canceled.Token); throw new Exception("Canceled verification ran."); } catch (OperationCanceledException) { }
+    var report = Path.Combine(guardRoot, "report.json");
+    if (CommandLine.Run(new[] { "--verify", linkPath, "--output", report }) != 3 || !File.Exists(report)) throw new Exception("Rejected-package CLI evidence missing.");
+    var preserved = File.ReadAllText(report);
+    if (CommandLine.Run(new[] { "--verify", linkPath, "--output", report }) != 2 || File.ReadAllText(report) != preserved) throw new Exception("CLI report was overwritten.");
+    if (CommandLine.Run(new[] { "--bad" }) != 2) throw new Exception("Invalid CLI arguments accepted.");
+    var broken = Path.Combine(guardRoot, "broken.zip"); File.WriteAllText(broken, "not a ZIP");
+    if (CommandLine.Run(new[] { "--verify", broken, "--output", Path.Combine(guardRoot, "broken.json") }) != 1 || File.Exists(Path.Combine(guardRoot, "broken.json"))) throw new Exception("Malformed archive command did not fail cleanly.");
+    var payload = Path.Combine(guardRoot, "payload"); Directory.CreateDirectory(payload); File.WriteAllText(Path.Combine(payload, "ok.txt"), "okay");
+    var validZip = await PackagingEngine.CompleteReleaseAsync(payload, new { schema = 1 });
+    var validReport = Path.Combine(guardRoot, "valid.json");
+    if (CommandLine.Run(new[] { "--verify", validZip, "--output", validReport }) != 0) throw new Exception("Valid unattended verification failed.");
+}
+finally { Directory.Delete(guardRoot, true); }
+Console.WriteLine("PASS: hostile paths, archive links, resource budgets, cancellation and unattended verification");
