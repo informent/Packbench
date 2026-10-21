@@ -13,3 +13,5 @@ installer-payload/
 installer-output/
 
 test-headless-output/
+
+release-output/
