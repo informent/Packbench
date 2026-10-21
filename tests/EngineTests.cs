@@ -93,6 +93,14 @@ try
     try { PackagingEngine.EnumerateSourceFiles(sourceFixture, new HashSet<string>(StringComparer.OrdinalIgnoreCase)); throw new Exception("Source enumeration accepted a junction to an outside folder."); }
     catch (IOException ex) when (ex.Message.Contains("symbolic link or junction", StringComparison.OrdinalIgnoreCase)) { }
     if (!File.Exists(Path.Combine(externalFixture, "outside-secret.txt"))) throw new Exception("Source enumeration modified external content.");
+    var nested = Path.Combine(externalFixture, "nested"); Directory.CreateDirectory(nested);
+    var linkedNested = Path.Combine(junctionFixture, "nested");
+    try { PackagingEngine.EnumerateSourceFiles(linkedNested, new HashSet<string>()); throw new Exception("Linked ancestor accepted during source enumeration."); } catch (IOException) { }
+    try { await PackagingEngine.WriteManifestAsync(linkedNested, new { test = true }); throw new Exception("Manifest written through linked ancestor."); } catch (IOException) { }
+    try { await PackagingEngine.WriteChecksumsAsync(linkedNested); throw new Exception("Checksums written through linked ancestor."); } catch (IOException) { }
+    try { PackagingEngine.CreateZip(linkedNested); throw new Exception("ZIP created through linked ancestor."); } catch (IOException) { }
+    if (Directory.EnumerateFileSystemEntries(nested).Any()) throw new Exception("Linked output folder was modified.");
+    if (File.Exists(nested + ".zip")) throw new Exception("ZIP escaped through linked ancestor.");
 }
 finally
 {
