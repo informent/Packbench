@@ -118,14 +118,14 @@ public static class PackagingEngine
             var hash = await SHA256.HashDataAsync(stream);
             lines.Add($"{Convert.ToHexString(hash).ToLowerInvariant()}  {Path.GetRelativePath(root, file).Replace('\\', '/')}");
         }
-        await File.WriteAllLinesAsync(path, lines);
+        await WriteMetadataAsync(path, string.Join(Environment.NewLine, lines) + Environment.NewLine);
         return path;
     }
 
     public static async Task<string> WriteManifestAsync(string releaseFolder, object manifest)
     {
         var path = Path.Combine(releaseFolder, "openpackager-manifest.json");
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
+        await WriteMetadataAsync(path, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
         return path;
     }
 
@@ -134,8 +134,7 @@ public static class PackagingEngine
         ArgumentNullException.ThrowIfNull(excludedDirectoryNames);
         if (!Directory.Exists(sourceFolder)) throw new DirectoryNotFoundException(sourceFolder);
         var root = Path.GetFullPath(sourceFolder);
-        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
-            throw new IOException("Source project root must not be a symbolic link or junction.");
+        RejectLinkedPath(root);
 
         var files = new List<string>();
         var pending = new Stack<string>();
@@ -160,8 +159,7 @@ public static class PackagingEngine
     // Refuse linked content instead of silently including files outside the release.
     static IEnumerable<string> EnumerateRegularFiles(string folder)
     {
-        if ((File.GetAttributes(folder) & FileAttributes.ReparsePoint) != 0)
-            throw new IOException("Release folders must not contain symbolic links or junctions.");
+        RejectLinkedPath(folder);
         foreach (var entry in Directory.EnumerateFileSystemEntries(folder))
         {
             var attributes = File.GetAttributes(entry);
@@ -173,6 +171,36 @@ public static class PackagingEngine
             }
             else yield return entry;
         }
+    }
+
+    private static void RejectLinkedPath(string path)
+    {
+        for (string? current = Path.GetFullPath(path); !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
+        {
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("Path must not contain a symbolic link or junction.");
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+        }
+    }
+
+    private static async Task WriteMetadataAsync(string path, string text)
+    {
+        path = Path.GetFullPath(path);
+        RejectLinkedPath(path);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            await using (var writer = new StreamWriter(stream))
+                await writer.WriteAsync(text);
+            RejectLinkedPath(path);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     public static async Task<string> CompleteReleaseAsync(string releaseFolder, object manifest)
