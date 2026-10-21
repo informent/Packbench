@@ -1,0 +1,62 @@
+name: Publish verified release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Require a version tag from the default branch
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid version tag' }
+          git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"
+          if ($LASTEXITCODE -ne 0) { throw 'Release commit is not on the default branch' }
+      - name: Build and verify release bundle
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./scripts/Build-Release.ps1 -Tag $env:RELEASE_TAG
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-release
+          path: release-output/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: verified-release
+          path: release-output
+      - name: Verify bundle hashes before publishing
+        working-directory: release-output
+        run: sha256sum --strict --check SHA256SUMS
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" release-output/*-setup.exe release-output/*-win-x64.zip release-output/RELEASE-VALIDATION.json release-output/SHA256SUMS --verify-tag --title "Packbench ${RELEASE_TAG#v}" --notes-file release-output/RELEASE-NOTES.md
+
